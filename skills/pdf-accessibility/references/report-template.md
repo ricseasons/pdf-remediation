@@ -44,3 +44,21 @@ From `manual-review.md`, tailored to this document.
 ## Local processing
 Tools and versions (veraPDF, Tesseract, pikepdf, Chromium, axe-core). State that no
 document content left the machine and that links were not visited.
+
+## Continuation brief (when work will be picked up later)
+Write this as `HANDOFF.md` beside the deliverables when anything is left for another
+session or person:
+- **Request and constraints:** the document, its source SHA-256, upload restrictions, the
+  target standard (confirmed or assumed), what local work is already authorized.
+- **Current result:** final files with hashes and page counts (`manifest.py`), repair or
+  rebuild, what changed in layout or pagination.
+- **Evidence:** validator and version, source-to-model proofreading status, coverage
+  method and its limits, visual review, contrast, HTML checks, AT tests run or not run.
+- **Open questions:** hidden or conflicting text, uncertain OCR, incomplete sentences,
+  unverified links, and which version the output follows.
+- **How to continue:** the next checks in order of value, the exact commands, what each
+  script overwrites, case-specific assumptions (tag ids, coordinates), and which inputs
+  (OCR, plan, content model) to reuse rather than regenerate.
+- **Tool record:** tools actually run with versions, failed attempts and their fixes;
+  tools only considered go in a separate sentence.
+- **Completion boundary:** what can be concluded now, and what is still pending.

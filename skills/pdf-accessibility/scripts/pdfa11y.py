@@ -311,11 +311,12 @@ def norm_text(s: str) -> str:
 # ---- external tools ----------------------------------------------------
 
 def verapdf_bin():
-    for name in ("verapdf",):
-        p = shutil.which(name)
-        if p:
-            return p
     import os
+    if os.environ.get("VERAPDF") and Path(os.environ["VERAPDF"]).exists():
+        return os.environ["VERAPDF"]
+    p = shutil.which("verapdf")
+    if p:
+        return p
     cache = Path(os.environ.get("PDF_A11Y_CACHE", Path.home() / ".cache" / "pdf-a11y"))
     for p in (cache / "verapdf" / "verapdf", Path.home() / "verapdf" / "verapdf", Path("/opt/verapdf/verapdf")):
         if p.exists():

@@ -42,6 +42,11 @@ if ((${#pkgs[@]})); then
   fi
 fi
 
+# macOS: Apple Vision OCR (ocr.py --engine vision) needs swift from the Xcode command line tools.
+if [[ $(uname) == Darwin ]] && ! have swift; then
+  echo "Optional: run 'xcode-select --install' for Apple Vision OCR (better on small print than Tesseract)." >&2
+fi
+
 # veraPDF CLI from Maven Central (works where the veraPDF download site is blocked).
 VERA_DIR="$CACHE/verapdf"
 if [[ ! -x "$VERA_DIR/verapdf" ]] && ! have verapdf; then

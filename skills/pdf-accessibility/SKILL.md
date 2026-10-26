@@ -39,6 +39,16 @@ bash scripts/setup.sh --check  # report what is missing
 
 ## Workflow
 
+### 0. Continuing earlier work
+
+If a handoff, report, OCR output, plan or content model already exists (from you, another
+agent or a person), read it before running anything, and reuse it: redo a step only for a
+specific defect you can name. Keep the known-good output untouched until a new one
+validates. Read the previous case's scripts for their patterns; don't run them on a new
+source revision unchanged. Resume with the highest-value open item, usually
+source-to-model proofreading or the manual checks. `references/lessons.md` lists the
+traps earlier sessions hit.
+
 ### 1. Intake and audit
 
 ```bash
@@ -77,7 +87,8 @@ document, and a reading edition that reflows.
    `references/alt-text.md`. Rewrite auto-generated alt ("Description automatically
    generated", "Logo", "Picture 3").
 2. **Image-of-text and outlined text.** `python3 $S/ocr.py WORK/source.pdf WORK --pages 7,8`
-   (Tesseract, local). Compare OCR with the render at zoom and correct it. Then add a
+   (local: Apple Vision on a Mac, Tesseract elsewhere; `--engine` to choose). Compare OCR
+   with the render at zoom and correct it. Then add a
    `text_layers` entry: invisible tagged text (real headings, paragraphs, lists) placed
    over the image, and artifact the image. Vector-outlined headings that already have an
    MCID just get `role` + `actualtext`; outlined text that is only an artifact gets a
@@ -121,7 +132,16 @@ document, and a reading edition that reflows.
 3. Render the final PDF pages (`audit.py` writes `pages/`) and look at them: no clipped
    tables, no orphaned headings, sensible breaks.
 
-### 4. Validate
+### 4. Proofread source against output
+
+Automated coverage proves the output contains what the plan or model says, not that the
+plan or model matches the source. Separately, with the page render beside
+`screenreader.txt`, check: every OCR'd page word for word, names, numbers and dates,
+every table or milestone pairing (number, description, date), list membership, and the
+order of anything merged across columns. Note what you checked in the report; mark the
+rest as owner proofreading.
+
+### 5. Validate
 
 ```bash
 python3 $S/validate.py WORK/out.pdf WORK/validation --source WORK/source.pdf --contrast        # repair
@@ -133,7 +153,9 @@ gaps must be deliberate artifacts, contrast findings in the source design go to 
 (a repair cannot change colours without the owner's agreement), long alt text may need a
 text alternative elsewhere. Use `ua2` only for PDF 2.0 output.
 
-### 5. Report and hand off
+Render pages into a fresh folder for each revision so old images can't pass as current.
+
+### 6. Report and hand off
 
 Write `REMEDIATION-REPORT.md` from `references/report-template.md`: what was done, the
 validation table, the WCAG 2.2 A/AA criterion matrix (`references/wcag22-checklist.md`),
@@ -141,6 +163,9 @@ source issues for the owner, and the manual acceptance steps in
 `references/manual-review.md` (NVDA/JAWS/VoiceOver read-through, Acrobat reflow and 200%/
 400% zoom, keyboard link test, owner proofreading of OCR and alt text). Deliver the PDF(s),
 the HTML edition if built, the report, `validation/VALIDATION.md` and the transcript.
+Finish with `python3 $S/manifest.py DELIVERY_DIR` so every number in the report is tied to
+exact file hashes, and write a continuation brief (end of the report template) when
+anything is left open.
 
 ## Judgement guide (the part tools cannot do)
 
@@ -168,9 +193,10 @@ the HTML edition if built, the report, `validation/VALIDATION.md` and the transc
 
 ## Files
 
-- `scripts/` — `audit.py`, `figure_sheets.py`, `draft_plan.py`, `ocr.py`, `repair.py`,
-  `screenreader.py`, `draft_content.py`, `build_html.py`, `render_pdf.cjs`, `finalize.py`, `validate.py`,
-  `setup.sh`, shared `pdfa11y.py`.
+- `scripts/` — `audit.py`, `figure_sheets.py`, `draft_plan.py`, `ocr.py` (+ `ocr_vision.swift`),
+  `repair.py`, `screenreader.py`, `draft_content.py`, `build_html.py`, `render_pdf.cjs`,
+  `finalize.py`, `validate.py`, `manifest.py`, `setup.sh`, shared `pdfa11y.py`.
 - `references/` — `decision-guide.md`, `repair-plan.md`, `content-model.md`, `alt-text.md`,
-  `pdfua-fixes.md`, `wcag22-checklist.md`, `manual-review.md`, `report-template.md`.
+  `pdfua-fixes.md`, `wcag22-checklist.md`, `manual-review.md`, `report-template.md`,
+  `lessons.md`.
 - `examples/build_plan_example.py` — a real plan builder for a 22-page slide-export report.

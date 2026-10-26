@@ -1,8 +1,8 @@
 # pdf-remediation
 
 A Claude skill for remediating PDFs to **WCAG 2.2 AA** and **PDF/UA-1**, entirely on the local
-machine. Open-source tools do the mechanics (veraPDF, pikepdf, PyMuPDF, pdfplumber, Tesseract,
-Chromium, axe-core); Claude makes the judgement calls a human remediator would: what each image
+machine. Open-source tools do the mechanics (veraPDF, pikepdf, PyMuPDF, pdfplumber, Tesseract or
+Apple Vision on a Mac, Chromium, axe-core); Claude makes the judgement calls a human remediator would: what each image
 means, which graphics are decorative, what the headings and reading order are, what a table's
 headers are, and where colour carries meaning that has to be put into words.
 
@@ -46,5 +46,7 @@ pages, milestone "tables" built from loose text boxes):
 | Figures without alt | 344 | 0 | 0 |
 | axe-core (HTML) | — | — | 0 violations |
 
-The test document is not in this repository. Automated results are not a conformance claim; see
+The skill also folds in the lessons from an earlier Codex session on the same document, which
+built the first reading edition (`references/lessons.md`). The test document is not in this
+repository. Automated results are not a conformance claim; see
 `references/manual-review.md` for the screen-reader, reflow and owner checks still required.

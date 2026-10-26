@@ -1,8 +1,14 @@
 #!/usr/bin/env python3
-"""Local OCR of page images with Tesseract, positioned in PDF coordinates.
+"""Local OCR of page images, positioned in PDF coordinates.
 
 Usage: ocr.py INPUT.pdf WORKDIR --pages 7,8,9 [--dpi 300] [--lang eng] [--psm 3]
+       [--engine auto|tesseract|vision] [--vision-lang en-US]
        [--region PAGE:x0,top,x1,bottom]   (crop before OCR; repeatable)
+
+Engines run on this machine only. tesseract works everywhere; vision (Apple Vision via
+ocr_vision.swift, macOS only) is usually better on small slide print. auto picks vision
+when swift is available on macOS, otherwise tesseract. Vision has no layout blocks, so
+lines are grouped into blocks by column and spacing.
 
 Writes WORKDIR/ocr/page-NN.json  {"page", "lines": [{"id", "text", "conf", "bbox"}]}
 and   WORKDIR/ocr/page-NN.txt   one line per OCR line: id conf bbox text
@@ -17,6 +23,7 @@ import argparse
 import csv
 import io
 import json
+import platform
 import shutil
 import subprocess
 import sys
@@ -36,6 +43,38 @@ def ocr_image(png, lang, psm):
     return list(csv.DictReader(io.StringIO(res.stdout), delimiter="\t", quoting=csv.QUOTE_NONE))
 
 
+def ocr_vision(png, langs):
+    """Apple Vision lines as (text, conf, [x0, top, x1, bottom]) in pixels."""
+    swift = shutil.which("swift")
+    if not swift:
+        sys.exit("swift not found; install Xcode command line tools or use --engine tesseract")
+    script = Path(__file__).with_name("ocr_vision.swift")
+    res = subprocess.run([swift, str(script), str(png), *langs], capture_output=True, text=True)
+    if res.returncode:
+        sys.exit("Vision OCR failed (check OS permissions, or use --engine tesseract):\n" + res.stderr)
+    return [(r["text"], r["conf"], r["box"]) for r in json.loads(res.stdout)]
+
+
+def vision_blocks(lines):
+    """Group Vision lines into blocks: same column (x overlap) and a small vertical gap."""
+    lines = sorted(lines, key=lambda l: (l[2][1], l[2][0]))
+    blocks = []                                           # [last box, [indices]]
+    out = [None] * len(lines)
+    for i, (_, _, b) in enumerate(lines):
+        h = b[3] - b[1]
+        for blk in reversed(blocks):
+            lb = blk[0]
+            overlap = min(b[2], lb[2]) - max(b[0], lb[0])
+            if overlap > 0.3 * min(b[2] - b[0], lb[2] - lb[0]) and 0 <= b[1] - lb[3] < 1.2 * h:
+                blk[0] = b
+                out[i] = blocks.index(blk)
+                break
+        else:
+            blocks.append([b])
+            out[i] = len(blocks) - 1
+    return lines, out
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("input")
@@ -45,7 +84,12 @@ def main():
     ap.add_argument("--lang", default="eng")
     ap.add_argument("--psm", type=int, default=3)
     ap.add_argument("--region", action="append", default=[])
+    ap.add_argument("--engine", choices=["auto", "tesseract", "vision"], default="auto")
+    ap.add_argument("--vision-lang", default="en-US", help="comma list of BCP 47 tags for Vision")
     a = ap.parse_args()
+    engine = a.engine
+    if engine == "auto":
+        engine = "vision" if platform.system() == "Darwin" and shutil.which("swift") else "tesseract"
     out = Path(a.workdir) / "ocr"
     out.mkdir(parents=True, exist_ok=True)
     regions = defaultdict(list)
@@ -61,6 +105,14 @@ def main():
         for ri, (x0, t, x1, b) in enumerate(clips):
             png = out / f"page-{pg:02}-r{ri}.png"
             page.get_pixmap(dpi=a.dpi, clip=fitz.Rect(x0, t, x1, b)).save(str(png))
+            if engine == "vision":
+                vl, blk = vision_blocks(ocr_vision(png, a.vision_lang.split(",")))
+                for (text, conf, (vx0, vt, vx1, vb)), bi in zip(vl, blk):
+                    lines.append({"id": f"p{pg}-l{len(lines) + 1}", "block": f"r{ri}v{bi}", "text": text,
+                                  "conf": round(conf, 1),
+                                  "bbox": [round(vx0 / scale + x0, 1), round(vt / scale + t, 1),
+                                           round(vx1 / scale + x0, 1), round(vb / scale + t, 1)]})
+                continue
             rows = ocr_image(png, a.lang, a.psm)
             groups = defaultdict(list)
             for row in rows:
@@ -77,11 +129,11 @@ def main():
                 lines.append({"id": f"p{pg}-l{len(lines) + 1}", "block": f"r{ri}b{key[0]}p{key[1]}",
                               "text": " ".join(w["text"] for w in ws), "conf": round(conf, 1),
                               "bbox": [round(lx0, 1), round(lt, 1), round(lx1, 1), round(lb, 1)]})
-        (out / f"page-{pg:02}.json").write_text(json.dumps({"page": pg, "dpi": a.dpi, "lines": lines}, indent=1, ensure_ascii=False))
+        (out / f"page-{pg:02}.json").write_text(json.dumps({"page": pg, "dpi": a.dpi, "engine": engine, "lines": lines}, indent=1, ensure_ascii=False))
         (out / f"page-{pg:02}.txt").write_text("\n".join(
             f"{l['id']} c{l['conf']:.0f} {','.join(f'{v:.0f}' for v in l['bbox'])} {l['text']}" for l in lines))
         low = sum(1 for l in lines if l["conf"] < 70)
-        print(f"page {pg}: {len(lines)} lines ({low} below 70% confidence) → {out / f'page-{pg:02}.txt'}")
+        print(f"page {pg} ({engine}): {len(lines)} lines ({low} below 70% confidence) → {out / f'page-{pg:02}.txt'}")
 
 
 if __name__ == "__main__":
