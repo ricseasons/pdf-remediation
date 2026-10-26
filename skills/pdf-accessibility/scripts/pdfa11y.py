@@ -308,6 +308,25 @@ def norm_text(s: str) -> str:
     return re.sub(r"[^a-z0-9]", "", s.lower())
 
 
+def fonts_inventory(pdf):
+    """One record per font object: name, subtype, embedded, ToUnicode, first page."""
+    fonts = {}
+    for i, page in enumerate(pdf.pages):
+        res = page.obj.get("/Resources", {})
+        for name, f in res.get("/Font", {}).items():
+            key = f.objgen
+            if key in fonts:
+                continue
+            desc = f.get("/FontDescriptor")
+            if desc is None and "/DescendantFonts" in f:
+                desc = f.DescendantFonts[0].get("/FontDescriptor")
+            embedded = bool(desc is not None and any(k in desc for k in ("/FontFile", "/FontFile2", "/FontFile3")))
+            fonts[key] = {"name": str(f.get("/BaseFont", name)), "subtype": str(f.get("/Subtype")),
+                          "embedded": embedded or str(f.get("/Subtype")) == "/Type3",
+                          "tounicode": "/ToUnicode" in f, "first_page": i + 1}
+    return list(fonts.values())
+
+
 # ---- external tools ----------------------------------------------------
 
 def verapdf_bin():

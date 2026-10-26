@@ -92,5 +92,7 @@ elements as they stand after `order`.
 - Artifacting an element that contains a link annotation is refused (annotations must stay
   tagged); unwrap or retag it instead.
 - ActualText replaces all descendant text for AT. Put it on the smallest element that needs it.
-- Invisible text uses Helvetica/WinAnsi (PDF/UA-1 exempts rendering mode 3 from embedding);
+- Invisible text uses an embedded WinAnsi subset of Liberation Sans, DejaVu Sans or Arial (fontTools;
+  `PDF_A11Y_FONT` picks another TrueType file). PDF/UA-1 exempts rendering mode 3 from embedding,
+  but Section 508 checkers flag any unembedded font, so it falls back to Helvetica only with a warning;
   characters outside Windows-1252 are kept correct through ActualText automatically.

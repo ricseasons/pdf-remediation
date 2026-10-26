@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Install the local toolchain for the pdf-accessibility skill. Everything runs offline after this.
-#   Python: pikepdf, pymupdf, pdfplumber, pypdf, Pillow
+#   Python: pikepdf, pymupdf, pdfplumber, pypdf, Pillow, fonttools
 #   System: tesseract (OCR), qpdf, poppler-utils, Java 11+ (for veraPDF)
 #   veraPDF: PDF/UA-1 / PDF/UA-2 validator, fetched from Maven Central into ~/.cache/pdf-a11y/verapdf
 #   Node: playwright (Chromium) and axe-core for the rebuild path
@@ -13,12 +13,12 @@ mkdir -p "$CACHE"
 have() { command -v "$1" >/dev/null 2>&1; }
 missing=()
 
-py_ok() { python3 -c "import pikepdf, pymupdf, pdfplumber, PIL" 2>/dev/null; }
+py_ok() { python3 -c "import pikepdf, pymupdf, pdfplumber, PIL, fontTools" 2>/dev/null; }
 if ! py_ok; then
   missing+=(python-packages)
   if [[ $CHECK == 0 ]]; then
-    python3 -m pip install --quiet pikepdf pymupdf pdfplumber pypdf Pillow 2>/dev/null \
-      || python3 -m pip install --quiet --break-system-packages pikepdf pymupdf pdfplumber pypdf Pillow
+    python3 -m pip install --quiet pikepdf pymupdf pdfplumber pypdf Pillow fonttools 2>/dev/null \
+      || python3 -m pip install --quiet --break-system-packages pikepdf pymupdf pdfplumber pypdf Pillow fonttools
   fi
 fi
 

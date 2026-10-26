@@ -22,7 +22,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import pikepdf  # noqa: E402
-from pdfa11y import Doc, page_objects_by_mcid, run_verapdf, union_bbox, write_json, HEADING_RE  # noqa: E402
+from pdfa11y import Doc, fonts_inventory, page_objects_by_mcid, run_verapdf, union_bbox, write_json, HEADING_RE  # noqa: E402
 
 
 def render_pages(pdf_path, outdir, dpi):
@@ -50,24 +50,6 @@ def scan_signals(pdf_path):
                     "images": len(page.get_images()),
                     "likely_image_text": len(text.strip()) < 200 and img_area / area > 0.25})
     return out
-
-
-def fonts_inventory(pdf):
-    fonts = {}
-    for i, page in enumerate(pdf.pages):
-        res = page.obj.get("/Resources", {})
-        for name, f in res.get("/Font", {}).items():
-            key = f.objgen
-            if key in fonts:
-                continue
-            desc = f.get("/FontDescriptor")
-            if desc is None and "/DescendantFonts" in f:
-                desc = f.DescendantFonts[0].get("/FontDescriptor")
-            embedded = bool(desc is not None and any(k in desc for k in ("/FontFile", "/FontFile2", "/FontFile3")))
-            fonts[key] = {"name": str(f.get("/BaseFont", name)), "subtype": str(f.get("/Subtype")),
-                          "embedded": embedded or str(f.get("/Subtype")) == "/Type3",
-                          "tounicode": "/ToUnicode" in f, "first_page": i + 1}
-    return list(fonts.values())
 
 
 def main():

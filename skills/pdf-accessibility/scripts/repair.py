@@ -17,8 +17,12 @@ Order of operations:
   7. automatic fixes                           8. save, verify the tree still parses
 """
 import argparse
+import io
 import json
+import os
 import re
+import shutil
+import subprocess
 import sys
 from collections import defaultdict
 from pathlib import Path
@@ -335,7 +339,7 @@ class Repair:
                     raise SystemExit(f"text layer block {text[:40]!r} on page {pgi + 1} needs bbox or ocr line ids")
                 mcid = next_mcid
                 next_mcid += 1
-                ops.append(invisible_text_ops(text, bbox, lboxes, float(page.mediabox[3]), font_name, role, mcid, llens))
+                ops.append(invisible_text_ops(text, bbox, lboxes, float(page.mediabox[3]), font_name, role, mcid, llens, self.pdf))
                 e = self.new_elem(role, container)
                 e.Pg = page.obj
                 e.K = Array([mcid])
@@ -575,8 +579,86 @@ def max_mcid(page):
     return m
 
 
+FONT_CANDIDATES = [
+    "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+    "/usr/share/fonts/liberation-sans/LiberationSans-Regular.ttf",
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+    "/usr/share/fonts/dejavu/DejaVuSans.ttf",
+    "/System/Library/Fonts/Supplemental/Arial.ttf",
+    "/Library/Fonts/Arial.ttf",
+    "C:/Windows/Fonts/arial.ttf",
+]
+_INVISIBLE = {}          # per output PDF: font object and WinAnsi widths (1/1000 em)
+
+
+def find_text_font():
+    """A TrueType font to embed for invisible text: PDF_A11Y_FONT, fontconfig, then known paths."""
+    env = os.environ.get("PDF_A11Y_FONT")
+    if env and Path(env).exists():
+        return env
+    if shutil.which("fc-match"):
+        for fam in ("Liberation Sans", "DejaVu Sans", "Arial"):
+            r = subprocess.run(["fc-match", "-f", "%{file}", fam], capture_output=True, text=True)
+            if r.returncode == 0 and r.stdout.lower().endswith(".ttf") and Path(r.stdout).exists():
+                return r.stdout
+    return next((f for f in FONT_CANDIDATES if Path(f).exists()), None)
+
+
+def build_invisible_font(pdf):
+    """Embedded, subset TrueType font with WinAnsi encoding for rendering-mode-3 text.
+
+    PDF/UA-1 exempts invisible text from embedding, but Section 508 and many checkers
+    still flag any unembedded font, so embed one when fontTools and a font file exist.
+    Falls back to standard Helvetica (valid PDF/UA) and says so.
+    """
+    path = find_text_font()
+    try:
+        from fontTools.subset import Options, Subsetter
+        from fontTools.ttLib import TTFont
+    except ImportError:
+        path = None
+    if not path:
+        print("note: no embeddable TrueType font or fontTools; invisible text uses unembedded Helvetica "
+              "(allowed by PDF/UA-1, but some 508 checkers flag it). Set PDF_A11Y_FONT or run setup.sh.",
+              file=sys.stderr)
+        font = pdf.make_indirect(Dictionary(Type=Name.Font, Subtype=Name.Type1, BaseFont=Name.Helvetica,
+                                            Encoding=Name.WinAnsiEncoding))
+        return font, None
+    codes = [c for c in range(32, 256) if c not in (0x7F, 0x81, 0x8D, 0x8F, 0x90, 0x9D)]
+    chars = {c: bytes([c]).decode("cp1252") for c in codes}
+    tt = TTFont(path)
+    opts = Options()
+    opts.name_IDs, opts.notdef_outline, opts.hinting = ["*"], True, False
+    sub = Subsetter(opts)
+    sub.populate(unicodes=[ord(ch) for ch in chars.values()])
+    sub.subset(tt)
+    cmap = tt.getBestCmap()
+    upem = tt["head"].unitsPerEm
+    scale = 1000 / upem
+    hmtx = tt["hmtx"].metrics
+    widths = {c: round(hmtx[cmap[ord(ch)]][0] * scale) if ord(ch) in cmap else 0 for c, ch in chars.items()}
+    buf = io.BytesIO()
+    tt.save(buf)
+    data = buf.getvalue()
+    ps = re.sub(r"[^A-Za-z0-9-]", "", tt["name"].getDebugName(6) or "Sans") or "Sans"
+    head, os2, hhea = tt["head"], tt["OS/2"], tt["hhea"]
+    desc = Dictionary(Type=Name.FontDescriptor, FontName=Name("/A11YIN+" + ps), Flags=32,
+                      FontBBox=Array([round(v * scale) for v in (head.xMin, head.yMin, head.xMax, head.yMax)]),
+                      ItalicAngle=0, Ascent=round(hhea.ascent * scale), Descent=round(hhea.descent * scale),
+                      CapHeight=round(getattr(os2, "sCapHeight", hhea.ascent * 0.7) * scale), StemV=80,
+                      FontFile2=pdf.make_stream(data, Length1=len(data)))
+    font = pdf.make_indirect(Dictionary(Type=Name.Font, Subtype=Name.TrueType, BaseFont=Name("/A11YIN+" + ps),
+                                        FirstChar=32, LastChar=255,
+                                        Widths=Array([widths.get(c, 0) for c in range(32, 256)]),
+                                        Encoding=Name.WinAnsiEncoding, FontDescriptor=pdf.make_indirect(desc)))
+    return font, widths
+
+
 def ensure_invisible_font(pdf, page):
-    """Standard Helvetica for rendering-mode-3 text (PDF/UA-1 7.21.4.1 exempts invisible text from embedding)."""
+    """Add the shared invisible-text font to the page resources; returns its resource name."""
+    key = id(pdf)
+    if key not in _INVISIBLE:
+        _INVISIBLE[key] = build_invisible_font(pdf)
     res = page.obj.get("/Resources")
     if res is None:
         page.obj.Resources = res = Dictionary()
@@ -584,9 +666,16 @@ def ensure_invisible_font(pdf, page):
     if fonts is None:
         res.Font = fonts = Dictionary()
     if "/FA11yInv" not in fonts:
-        fonts.FA11yInv = pdf.make_indirect(Dictionary(Type=Name.Font, Subtype=Name.Type1, BaseFont=Name.Helvetica,
-                                                      Encoding=Name.WinAnsiEncoding))
+        fonts.FA11yInv = _INVISIBLE[key][0]
     return "/FA11yInv"
+
+
+def text_width(pdf, line, size):
+    """Advance width of line in points with the invisible font (0.5 em per char if metrics are unknown)."""
+    widths = _INVISIBLE.get(id(pdf), (None, None))[1]
+    if not widths:
+        return 0.5 * size * len(line)
+    return sum(widths.get(b, 500) for b in line.encode("cp1252", "replace")) * size / 1000
 
 
 def _pdf_str(t):
@@ -594,7 +683,7 @@ def _pdf_str(t):
     return b"(" + b.replace(b"\\", b"\\\\").replace(b"(", b"\\(").replace(b")", b"\\)") + b")"
 
 
-def invisible_text_ops(text, bbox, line_boxes, page_h, font, role, mcid, line_lens=None):
+def invisible_text_ops(text, bbox, line_boxes, page_h, font, role, mcid, line_lens=None, pdf=None):
     """Lay text out over bbox as invisible lines, one per OCR line box when available.
 
     Words are distributed over the OCR lines in proportion to each OCR line's
@@ -628,7 +717,7 @@ def invisible_text_ops(text, bbox, line_boxes, page_h, font, role, mcid, line_le
     out = [f"/{role} <</MCID {mcid}>> BDC BT 3 Tr".encode()]
     for line, (x0, t, x1, b) in zip(lines, boxes):
         size = max(1.0, (b - t) * 0.85)
-        width = max(1.0, 0.5 * size * len(line))
+        width = max(1.0, text_width(pdf, line, size))
         tz = max(1.0, min(1000.0, 100 * (x1 - x0) / width))
         out.append(f"/{font[1:]} {size:.2f} Tf {tz:.1f} Tz 1 0 0 1 {x0:.2f} {page_h - b + 0.2 * (b - t):.2f} Tm ".encode()
                    + _pdf_str(line) + b" Tj")

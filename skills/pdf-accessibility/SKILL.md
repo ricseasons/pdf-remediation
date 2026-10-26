@@ -78,7 +78,9 @@ document, and a reading edition that reflows.
 ### 3a. Repair path (layout-preserving)
 
 1. **Figures.** `python3 $S/figure_sheets.py WORK/source.pdf WORK` then
-   `python3 $S/draft_plan.py WORK --title "Real document title" --lang en-US`.
+   `python3 $S/draft_plan.py WORK --title "Real document title" --lang en-US`, then set
+   `metadata.author` and `metadata.subject` in the plan (from the cover or the person; list an
+   inferred author as an owner question rather than waiting on it).
    The draft decides the mechanical cases (containers → unwrap, rules/backgrounds/repeated
    logos → artifact, page numbers → artifact) and marks the rest TODO.
    `python3 $S/figure_sheets.py WORK/source.pdf WORK --pending WORK/plan.draft.json`
@@ -125,7 +127,7 @@ document, and a reading edition that reflows.
    ```bash
    python3 $S/build_html.py WORK/content.json WORK/edition.html --expected WORK/expected.json
    node $S/render_pdf.cjs WORK/edition.html WORK/chrome.pdf WORK/html-checks.json --footer "Short title · Reading edition"
-   python3 $S/finalize.py WORK/chrome.pdf WORK/edition.pdf --title "Title - Accessible Reading Edition"
+   python3 $S/finalize.py WORK/chrome.pdf WORK/edition.pdf --title "Title - Accessible Reading Edition" --author "Publisher"
    ```
    `render_pdf.cjs` blocks all network access, runs axe-core and the reflow, text-spacing,
    200% and keyboard checks. Fix every axe violation in the content model and rebuild.
@@ -147,7 +149,7 @@ rest as owner proofreading.
 python3 $S/validate.py WORK/out.pdf WORK/validation --source WORK/source.pdf --contrast        # repair
 python3 $S/validate.py WORK/edition.pdf WORK/validation-ed --expected WORK/expected.json --contrast  # rebuild
 ```
-Required to ship: `pdfua.ua1` PASS, metadata/headings/figures/lists/links/tables/untagged
+Required to ship: `pdfua.ua1` PASS, metadata/fonts/headings/figures/lists/links/tables/untagged
 not FAIL, `visual_diff` PASS for a repair. Every REVIEW item needs a decision: coverage
 gaps must be deliberate artifacts, contrast findings in the source design go to the owner
 (a repair cannot change colours without the owner's agreement), long alt text may need a

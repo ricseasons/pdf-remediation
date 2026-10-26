@@ -40,7 +40,7 @@ pages, milestone "tables" built from loose text boxes):
 
 | | Source | Repaired (same layout) | Reading edition |
 |---|---|---|---|
-| veraPDF PDF/UA-1 | 9 rules, 401 checks failed | 0 failed (72,103 checks passed) | 0 failed (184,465 checks passed) |
+| veraPDF PDF/UA-1 | 9 rules, 401 checks failed | 0 failed (72,100 checks passed) | 0 failed (184,465 checks passed) |
 | Rendering vs source | — | identical, all 22 pages | new layout, 38 pages |
 | Headings | 0 | 110 (one H1, no skipped levels) | 118 |
 | Figures without alt | 344 | 0 | 0 |

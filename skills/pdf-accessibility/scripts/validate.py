@@ -30,7 +30,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from pikepdf import Dictionary, Name  # noqa: E402
-from pdfa11y import Doc, is_elem, norm_text, page_objects_by_mcid, run_verapdf, seq, write_json  # noqa: E402
+from pdfa11y import Doc, fonts_inventory, is_elem, norm_text, page_objects_by_mcid, run_verapdf, seq, write_json  # noqa: E402
 
 GENERIC_TITLE = re.compile(r"(?i)^\s*(powerpoint presentation|microsoft word.*|untitled.*|document\d*|slide \d+|\S+\.(docx?|pptx?|pdf))\s*$")
 WEAK_ALT = re.compile(r"(?i)description automatically generated|ai-generated content|^\s*(image|picture|graphic|photo|logo|icon|"
@@ -62,8 +62,14 @@ def structure_checks(d: Doc, mc):
         problems.append("PDF/UA identifier missing")
     if not bool(root.get("/MarkInfo", {}).get("/Marked", False)):
         problems.append("MarkInfo/Marked not true")
-    results.append(check("metadata", "fail" if problems else "pass",
-                         "; ".join(problems) or f"title {title!r}, lang {root.get('/Lang')}, PDF/UA-{ua}"))
+    soft = [f"{k[1:].lower()} missing" for k in ("/Author", "/Subject")
+            if not (d.pdf.docinfo and str(d.pdf.docinfo.get(k, "")).strip())]
+    results.append(check("metadata", "fail" if problems else ("review" if soft else "pass"),
+                         "; ".join(problems + soft) or f"title {title!r}, lang {root.get('/Lang')}, PDF/UA-{ua}"))
+    loose = [f for f in fonts_inventory(d.pdf) if not f["embedded"]]
+    results.append(check("fonts", "review" if loose else "pass",
+                         f"{len(loose)} font(s) not embedded" + (" (allowed by PDF/UA-1 only for invisible text; "
+                         "Section 508 checkers flag them)" if loose else ""), [f"{f['name']} p{f['first_page']}" for f in loose]))
     if d.tree is None:
         results.append(check("tagged", "fail", "document has no structure tree"))
         return results
